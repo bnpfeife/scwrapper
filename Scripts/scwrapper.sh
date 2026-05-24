@@ -23,40 +23,54 @@ set -euo pipefail
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-CA_CERTS=/etc/ssl/certs/cacert.pem
-DOWNLOAD_URL=https://github.com/bnpfeife/scwrapper/releases/download/latest/scwrapper.mister.tar.gz
-
 function install() {
-
-    if [[ ! -f "${CA_CERTS}" ]] ; then
-        echo 'Could not locate CA certificates. '
-        read -r -p 'Continue with insecure download (y/n): ' option
-
-        if [[ "${option}" == y ]] ; then
-            curl --insecure "${DOWNLOAD_URL}" | tar -xzvf - -C /
-        else
-            exit 1
-        fi
-    else
-        curl --cacert /etc/ssl/certs/cacert.pem -fL "${DOWNLOAD_URL}" | tar -xzvf - -C /
-    fi
+    remount_fs
+    remove_files
+    install_files
 
     read -r -n 1 -s -p 'Press any key to reboot...'
     reboot -f
 }
 
 function uninstall() {
-   rm -vf /etc/init.d/S99scwrapper              \
-          /etc/udev/rules.d/99-disable-sc.rules \
-          /usr/bin/scwrapper
+    remount_fs
+    remove_files
 
     read -r -n 1 -s -p 'Press any key to reboot...'
     reboot -f
 }
 
-if findmnt -n -o OPTIONS / | egrep -q '^ro|,ro,|,ro$|^ro$' ; then
-    mount -o remount,rw /
-fi
+function remount_fs() {
+    if [[ "$(findmnt -n -o OPTIONS /)" =~ ^ro|,ro,|,ro$|^ro$ ]] ; then
+        mount -o remount,rw /
+    fi
+}
+
+function remove_files() {
+   # NOTE: 0.0.3a no longer installs 99-disable-sc.rules
+   rm -vf /etc/init.d/S99scwrapper              \
+          /etc/udev/rules.d/99-disable-sc.rules \
+          /usr/bin/scwrapper
+}
+
+function install_files() {
+    DOWNLOAD_URL=https://github.com/bnpfeife/scwrapper/releases/download/latest/scwrapper.mister.tar.gz
+    CA_CERTS=/etc/ssl/certs/cacert.pem
+
+    if [[ ! -f "${CA_CERTS}" ]] ; then
+       echo 'Could not locate CA certificates.'
+       read -r -p 'Continue with insecure download (y/n): ' option
+
+        if [[ "${option}" == y ]] ; then
+            curl --insecure -fL "${DOWNLOAD_URL}" | tar -xzvf - -C /
+        else
+            exit 1
+        fi
+    else
+        curl --cacert "${CA_CERTS}" -fL "${DOWNLOAD_URL}" | tar -xzvf - -C /
+    fi
+}
+
 
 cat <<'EOF' || true
 ░█▀▀░▀█▀░█▀▀░█▀█░█▄█░░░█▀▀░█▀█░█▀█░▀█▀░█▀▄░█▀█░█░░░█░░░█▀▀░█▀▄░░░█░█░█▀▄░█▀█░█▀█░█▀█░█▀▀░█▀▄░
