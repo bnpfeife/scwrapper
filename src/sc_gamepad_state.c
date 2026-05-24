@@ -7,8 +7,10 @@
 #include <linux/uinput.h>
 
 void sc_gamepad_state_update(struct sc_gamepad_state* const gamepad, uint8_t const* const buffer) {
-    // Report ID (66)
-    if (buffer[0] == 66) {
+    // https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/steam/controller_structs.h#L553
+    //   ID_TRITON_CONTROLLER_STATE     - 0x42
+    //   ID_TRITON_CONTROLLER_STATE_BLE - 0x45
+    if (buffer[0] == 0x42 || buffer[0] == 0x45) {
         // buttons
         gamepad->btn_a          = buffer[2] & 0x01; // a
         gamepad->btn_b          = buffer[2] & 0x02; // b

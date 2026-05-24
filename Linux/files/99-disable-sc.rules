@@ -1,6 +1,0 @@
-# Disable Mouse and Keyboard Events
-KERNEL=="event[0-9]*", ENV{ID_VENDOR_ID}=="28de", ENV{ID_MODEL_ID}=="1302", RUN+="/bin/rm -f /dev/input/%k" # Steam Controller
-KERNEL=="event[0-9]*", ENV{ID_VENDOR_ID}=="28de", ENV{ID_MODEL_ID}=="1304", RUN+="/bin/rm -f /dev/input/%k" # Steam Controller Puck
-# Disable Mouse
-KERNEL=="mouse[0-9]*", ENV{ID_VENDOR_ID}=="28de", ENV{ID_MODEL_ID}=="1302", RUN+="/bin/rm -f /dev/input/%k" # Steam Controller
-KERNEL=="mouse[0-9]*", ENV{ID_VENDOR_ID}=="28de", ENV{ID_MODEL_ID}=="1304", RUN+="/bin/rm -f /dev/input/%k" # Steam Controller Puck

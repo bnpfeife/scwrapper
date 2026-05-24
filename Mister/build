@@ -18,13 +18,11 @@ make CC=arm-linux-gnueabihf-gcc RELEASE=1
 tmpdir="$(mktemp -d)"
 trap 'rm -rf ${tmpdir}' EXIT
 
-mkdir -p "${tmpdir}/etc/init.d/"       \
-         "${tmpdir}/etc/udev/rules.d/" \
+mkdir -p "${tmpdir}/etc/init.d/" \
          "${tmpdir}/usr/bin"
 
-cp Linux/files/99-disable-sc.rules  "${tmpdir}/etc/udev/rules.d/"
-cp Mister/files/S99scwrapper        "${tmpdir}/etc/init.d/"
-cp bin/scwrapper                    "${tmpdir}/usr/bin/"
+cp Mister/files/S99scwrapper "${tmpdir}/etc/init.d/"
+cp bin/scwrapper             "${tmpdir}/usr/bin/"
 
 tar -czvf mister.tar.gz -C "${tmpdir}" --owner=root --group=root .
 EOF
