@@ -34,26 +34,44 @@ ifeq ($(BUILD),release)
 endif
 
 #
-# Sources, Objects, and Dependencies
+# iniparser
+#
+INIPARSER_DIR   := vendor/iniparser
+INIPARSER_BUILD := $(INIPARSER_DIR)/build
+INIPARSER_LIB   := $(INIPARSER_BUILD)/libiniparser.a
+
+#
+# Sources, Objects, Dependencies, and Static Libraries
 #
 SRCS := $(wildcard src/*.c)
 OBJS := $(SRCS:src/%.c=obj/%.o)
 DEPS := $(OBJS:obj/%.o=obj/%.d)
+LIBS := $(INIPARSER_LIB)
 
 #
 # Targets
 #
-bin/scwrapper: $(OBJS)
+bin/scwrapper: $(OBJS) $(LIBS)
 	@mkdir -p bin
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) $(OBJS) $(LIBS) $(LDFLAGS) -o $@
 
 obj/%.o: src/%.c
 	@mkdir -p obj
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(INIPARSER_LIB): | submodules
+	cmake -S $(INIPARSER_DIR) -B $(INIPARSER_BUILD)
+	make -C $(INIPARSER_BUILD) iniparser-static
+
+.PHONY: submodules
+submodules:
+	@if [ ! -f .skip-submodules ]; then \
+		git submodule update --init --recursive --depth 1; \
+	fi
+
 .PHONY: clean
 clean:
-	rm -rf bin obj scwrapper.mister.tar.gz
+	rm -rf bin obj scwrapper.mister.tar.gz $(INIPARSER_BUILD)
 
 #
 # Docker Toolchains

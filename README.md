@@ -48,6 +48,7 @@ db_url = https://raw.githubusercontent.com/bnpfeife/scwrapper/db/db.json.zip
 Dependencies:
 - gcc
 - make
+- cmake
 - glibc (development libraries)
 - linux-headers (development libraries)
 

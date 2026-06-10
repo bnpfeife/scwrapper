@@ -1,3 +1,4 @@
+/.skip-submodules
 /bin/
 /obj/
 /scwrapper.mister.tar.gz
