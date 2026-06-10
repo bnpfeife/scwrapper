@@ -1,13 +1,12 @@
+#include "config.h"
 #include "constants.h"
 #include "virtual_mouse.h"
 
 #include <fcntl.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <unistd.h>
-
 #include <linux/uinput.h>
+#include <stdio.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 
 int virtual_mouse_setup(int* const uinput_fd) {
     if ((*uinput_fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK)) < 0) {
@@ -17,23 +16,24 @@ int virtual_mouse_setup(int* const uinput_fd) {
     if (ioctl(*uinput_fd, UI_SET_EVBIT, EV_KEY) ||
         ioctl(*uinput_fd, UI_SET_EVBIT, EV_REL)) {
         perror("failed to set uinput device capabilities");
-	    return RET_ERROR;
+            return RET_ERROR;
     }
-    if (ioctl(*uinput_fd, UI_SET_KEYBIT, BTN_LEFT) ||
-        ioctl(*uinput_fd, UI_SET_KEYBIT, BTN_RIGHT) ||
-        ioctl(*uinput_fd, UI_SET_RELBIT, REL_X) ||
+    if (ioctl(*uinput_fd, UI_SET_KEYBIT, BTN_LEFT)   ||
+        ioctl(*uinput_fd, UI_SET_KEYBIT, BTN_RIGHT)  ||
+        ioctl(*uinput_fd, UI_SET_KEYBIT, BTN_MIDDLE) ||
+        ioctl(*uinput_fd, UI_SET_RELBIT, REL_X)      ||
         ioctl(*uinput_fd, UI_SET_RELBIT, REL_Y)) {
         perror("failed to set uinput device buttons");
-	    return RET_ERROR;
+            return RET_ERROR;
     }
 
     struct uinput_setup usetup = {
         .name = VIRTUAL_MOUSE_NAME,
         .id = {
             .bustype = BUS_VIRTUAL,
-            .vendor  = VIRTUAL_MOUSE_VENDOR,
-            .product = VIRTUAL_MOUSE_PRODUCT,
-            .version = VIRTUAL_MOUSE_VERSION,
+            .vendor  = config.virtual.mouse.vid,
+            .product = config.virtual.mouse.pid,
+            .version = config.virtual.mouse.version,
         }
     };
 

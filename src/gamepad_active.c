@@ -1,7 +1,8 @@
+#include "config.h"
 #include "constants.h"
 #include "gamepad.h"
+#include "sc_epoll.h"
 #include "triton.h"
-#include "utils.h"
 #include "virtual_gamepad.h"
 #include "virtual_mouse.h"
 
@@ -9,9 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/epoll.h>
 
-int GamepadActive_init(struct GamepadActive* const gamepad, int epoll) {
+int GamepadActive_init(struct GamepadActive* const gamepad) {
     gamepad->ui_gamepad = -1;
     gamepad->ui_mouse   = -1;
 
@@ -31,7 +31,7 @@ int GamepadActive_init(struct GamepadActive* const gamepad, int epoll) {
     if (virtual_gamepad_setup(&gamepad->ui_gamepad)) {
         result = RET_ERROR;
     }
-    if (epoll_ctl_add(epoll, gamepad->ui_gamepad, EPOLLIN | EPOLLRDHUP)) {
+    if (sc_epoll_ctl_add(gamepad->ui_gamepad, EPOLLIN | EPOLLRDHUP)) {
         result = RET_ERROR;
     }
 
@@ -41,13 +41,13 @@ int GamepadActive_init(struct GamepadActive* const gamepad, int epoll) {
     gamepad->sw_configure.triggered = true;
 
     if (result) {
-        (void)GamepadActive_free(gamepad, epoll);
+        (void)GamepadActive_free(gamepad);
         return RET_ERROR;
     }
     return RET_OKAY;
 }
 
-int GamepadActive_free(struct GamepadActive* const gamepad, int epoll) {
+int GamepadActive_free(struct GamepadActive* const gamepad) {
     int result = RET_OKAY;
     if (gamepad->ui_mouse != -1) {
         if (virtual_mouse_destroy(gamepad->ui_mouse)) {
@@ -55,7 +55,7 @@ int GamepadActive_free(struct GamepadActive* const gamepad, int epoll) {
         }
     }
     if (gamepad->ui_gamepad != -1) {
-        if (epoll_ctl_remove(epoll, gamepad->ui_gamepad)) {
+        if (sc_epoll_ctl_remove(gamepad->ui_gamepad)) {
             result = RET_ERROR;
         }
         if (virtual_gamepad_destroy(gamepad->ui_gamepad)) {

@@ -1,12 +1,14 @@
+#include "config.h"
 #include "constants.h"
+#include "sc_string.h"
 #include "virtual_gamepad.h"
 
 #include <fcntl.h>
+#include <linux/uinput.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <linux/uinput.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 
 static int uinput_setup_axis(
     int fd,
@@ -29,6 +31,27 @@ static int uinput_setup_axis(
     return RET_OKAY;
 }
 
+static inline int maybe_init_btn(int fd, int32_t key, int32_t val) {
+    if (Mappings_is_btn_used(key)) {
+        if (ioctl(fd, UI_SET_KEYBIT, val)) {
+            return RET_ERROR;
+        }
+    }
+    return RET_OKAY;
+}
+
+static inline int maybe_init_abs(int fd, int32_t key, int32_t val, struct VirtualAbs const* const abs) {
+    if (Mappings_is_abs_used(key)) {
+        if (ioctl(fd, UI_SET_ABSBIT, val)) {
+            return RET_ERROR;
+        }
+        if (uinput_setup_axis(fd, val, abs->minimum, abs->maximum)) {
+            return RET_ERROR;
+        }
+    }
+    return RET_OKAY;
+}
+
 int virtual_gamepad_setup(int* const fd) {
     if ((*fd = open("/dev/uinput", O_RDWR | O_NONBLOCK)) < 0) {
         perror("failed to open uinput device");
@@ -40,68 +63,61 @@ int virtual_gamepad_setup(int* const fd) {
         perror("failed to set uinput device capabilities");
         return RET_ERROR;
     }
-    if (ioctl(*fd, UI_SET_KEYBIT, BTN_SOUTH)  || // a
-        ioctl(*fd, UI_SET_KEYBIT, BTN_EAST)   || // b
-        ioctl(*fd, UI_SET_KEYBIT, BTN_WEST)   || // x
-        ioctl(*fd, UI_SET_KEYBIT, BTN_NORTH)  || // y
-        ioctl(*fd, UI_SET_ABSBIT, ABS_HAT0X)  || // dpad x-axis
-        ioctl(*fd, UI_SET_ABSBIT, ABS_HAT0Y)  || // dpad y-axis
-        ioctl(*fd, UI_SET_KEYBIT, BTN_TL)     || // l1
-        ioctl(*fd, UI_SET_KEYBIT, BTN_TR)     || // r1
-        ioctl(*fd, UI_SET_KEYBIT, BTN_TL2)    || // l2
-        ioctl(*fd, UI_SET_KEYBIT, BTN_TR2)    || // r2
-        ioctl(*fd, UI_SET_KEYBIT, BTN_THUMBL) || // l3
-        ioctl(*fd, UI_SET_KEYBIT, BTN_THUMBR) || // r3
-        ioctl(*fd, UI_SET_KEYBIT, BTN_GRIPL)  || // l4
-        ioctl(*fd, UI_SET_KEYBIT, BTN_GRIPR)  || // r4
-        ioctl(*fd, UI_SET_KEYBIT, BTN_GRIPL2) || // l5
-        ioctl(*fd, UI_SET_KEYBIT, BTN_GRIPR2) || // r5
-        ioctl(*fd, UI_SET_KEYBIT, BTN_THUMB)  || // left touchpad (TODO: unused)
-        ioctl(*fd, UI_SET_KEYBIT, BTN_THUMB2) || // right touchpad (TODO: unused)
-        ioctl(*fd, UI_SET_KEYBIT, BTN_BASE)   || // quick
-        ioctl(*fd, UI_SET_KEYBIT, BTN_START)  || // menu
-        ioctl(*fd, UI_SET_KEYBIT, BTN_SELECT) || // view
-        ioctl(*fd, UI_SET_KEYBIT, BTN_MODE)   || // steam
-        ioctl(*fd, UI_SET_ABSBIT, ABS_X)      || // left thumbstick x-axis
-        ioctl(*fd, UI_SET_ABSBIT, ABS_Y)      || // left thumbstick y-axis
-        ioctl(*fd, UI_SET_ABSBIT, ABS_RX)     || // right thumbstick x-axis
-        ioctl(*fd, UI_SET_ABSBIT, ABS_RY)     || // right thumbstick y-axis
-        ioctl(*fd, UI_SET_ABSBIT, ABS_Z)      || // l2
-        ioctl(*fd, UI_SET_ABSBIT, ABS_RZ)) {     // r2
-        perror("failed to set uinput device buttons");
+    if (maybe_init_btn(*fd, GAMEPAD_BTN_NORTH,      BTN_NORTH)      ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_SOUTH,      BTN_SOUTH)      ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_EAST,       BTN_EAST)       ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_WEST,       BTN_WEST)       ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_DPAD_UP,    BTN_DPAD_UP)    ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_DPAD_DOWN,  BTN_DPAD_DOWN)  ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_DPAD_LEFT,  BTN_DPAD_LEFT)  ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_DPAD_RIGHT, BTN_DPAD_RIGHT) ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_GRIPL,      BTN_GRIPL)      ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_GRIPL2,     BTN_GRIPL2)     ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_GRIPR,      BTN_GRIPR)      ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_GRIPR2,     BTN_GRIPR2)     ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_THUMB,      BTN_THUMB)      ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_THUMB2,     BTN_THUMB2)     ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_THUMBL,     BTN_THUMBL)     ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_THUMBR,     BTN_THUMBR)     ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_TL,         BTN_TL)         ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_TL2,        BTN_TL2)        ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_TR,         BTN_TR)         ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_TR2,        BTN_TR2)        ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_BASE,       BTN_BASE)       ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_START,      BTN_START)      ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_SELECT,     BTN_SELECT)     ||
+        maybe_init_btn(*fd, GAMEPAD_BTN_MODE,       BTN_MODE)) {
+        perror("failed to setup uinput device buttons");
         return RET_ERROR;
     }
 
-    if (uinput_setup_axis(*fd, ABS_HAT0X, HAT_MIN,        HAT_MAX)        || // dpad x-axis
-        uinput_setup_axis(*fd, ABS_HAT0Y, HAT_MIN,        HAT_MAX)        || // dpad y-axis
-        uinput_setup_axis(*fd, ABS_Z,     TRIGGER_MIN,    TRIGGER_MAX)    || // l2
-        uinput_setup_axis(*fd, ABS_RZ,    TRIGGER_MIN,    TRIGGER_MAX)    || // r2
-        uinput_setup_axis(*fd, ABS_X,     THUMBSTICK_MIN, THUMBSTICK_MAX) || // left thumbstick x-axis
-        uinput_setup_axis(*fd, ABS_Y,     THUMBSTICK_MIN, THUMBSTICK_MAX) || // left thumbstick y-axis
-        uinput_setup_axis(*fd, ABS_RX,    THUMBSTICK_MIN, THUMBSTICK_MAX) || // right thumbstick x-axis
-        uinput_setup_axis(*fd, ABS_RY,    THUMBSTICK_MIN, THUMBSTICK_MAX) || // right thumbstick y-axis
-        uinput_setup_axis(*fd, ABS_HAT1X, TOUCHPAD_MIN,   TOUCHPAD_MAX)   || // left touchpad x-axis (TODO: unused)
-        uinput_setup_axis(*fd, ABS_HAT1Y, TOUCHPAD_MIN,   TOUCHPAD_MAX)   || // left touchpad y-axis (TODO: unused)
-        uinput_setup_axis(*fd, ABS_HAT2X, TOUCHPAD_MIN,   TOUCHPAD_MAX)   || // right touchpad x-axis (TODO: unused)
-        uinput_setup_axis(*fd, ABS_HAT2Y, TOUCHPAD_MIN,   TOUCHPAD_MAX)) {   // right touchpad y-axis (TODO: unused)
-        perror("failed to configure uinput device axis");
+    if (maybe_init_abs(*fd, GAMEPAD_ABS_X,  ABS_X,  &config.virtual.abs_x) ||
+        maybe_init_abs(*fd, GAMEPAD_ABS_Y,  ABS_Y,  &config.virtual.abs_y) ||
+        maybe_init_abs(*fd, GAMEPAD_ABS_Z,  ABS_Z,  &config.virtual.abs_z) ||
+        maybe_init_abs(*fd, GAMEPAD_ABS_RX, ABS_RX, &config.virtual.abs_rx) ||
+        maybe_init_abs(*fd, GAMEPAD_ABS_RY, ABS_RY, &config.virtual.abs_ry) ||
+        maybe_init_abs(*fd, GAMEPAD_ABS_RZ, ABS_RZ, &config.virtual.abs_rz)) {
+        perror("failed to setup uinput device axis");
         return RET_ERROR;
     }
+
     if (ioctl(*fd, UI_SET_FFBIT, FF_RUMBLE)) {
         perror("failed to configure uinput haptics");
         return RET_ERROR;
     }
 
     struct uinput_setup usetup = {
-        .name = VIRTUAL_GAMEPAD_NAME,
         .id = {
             .bustype = BUS_VIRTUAL,
-            .vendor  = VIRTUAL_GAMEPAD_VENDOR,
-            .product = VIRTUAL_GAMEPAD_PRODUCT,
-            .version = VIRTUAL_GAMEPAD_VERSION,
+            .vendor  = config.virtual.gamepad.vid,
+            .product = config.virtual.gamepad.pid,
+            .version = config.virtual.gamepad.version,
         },
         .ff_effects_max = 1,
     };
+    if (safe_strcpy((char*)&usetup.name, config.virtual.gamepad.name, UINPUT_MAX_NAME_SIZE)) {
+        return RET_ERROR;
+    }
 
     if (ioctl(*fd, UI_DEV_SETUP, &usetup)) {
         perror("failed to setup uinput device");

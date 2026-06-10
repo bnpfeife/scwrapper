@@ -1,25 +1,25 @@
+#include "config.h"
 #include "constants.h"
 #include "gamepad.h"
-#include "sc_gamepad_state.h"
-#include "sc_haptics.h"
-#include "triton.h"
-#include "utils.h"
-#include "virtual_gamepad.h"
+#include "sc_epoll.h"
+#include "sc_string.h"
 
 #include <dirent.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <linux/hidraw.h>
-#include <linux/input.h>
-#include <linux/uinput.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/epoll.h>
 #include <sys/inotify.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+
+// Steam vendor/product IDs
+#define STEAM_VENDOR_ID 0x28de
+#define STEAM_PRODUCT_CONTROLLER 0x1302
+#define STEAM_PRODUCT_CONTROLLER_BLUETOOTH 0x1303
+#define STEAM_PRODUCT_PUCK 0x1304
 
 static void cleanup_fd(int *fd) {
     if (close(*fd)) {
@@ -89,7 +89,6 @@ int gamepad_slot_remove(struct gamepad_slots* const slots, size_t index) {
 
 int try_add_gamepad(
     struct gamepad_slots* const slots,
-    int epoll_fd,
     char const* const device,
     bool retry
 ) {
@@ -139,12 +138,12 @@ int try_add_gamepad(
 
     struct Gamepad gamepad;
     memset(&gamepad, 0, sizeof(gamepad));
-    if (Gamepad_init(&gamepad, epoll_fd, hidraw_fd)) {
+    if (Gamepad_init(&gamepad, hidraw_fd)) {
         return RET_ERROR;
     }
 
     if (gamepad_slot_insert(slots, device, &gamepad)) {
-        (void)Gamepad_free(&gamepad, epoll_fd);
+        (void)Gamepad_free(&gamepad);
         return RET_ERROR;
     }
 
@@ -155,7 +154,6 @@ int try_add_gamepad(
 
 int handle_inotify_event(
     struct gamepad_slots* const slots,
-    int epoll_fd,
     int inotify_fd
 ) {
     // `inotify_event` contains a flexible array member (`name`), which
@@ -178,7 +176,7 @@ int handle_inotify_event(
         // In this case `name` will not be null terminated, so it
         // cannot be passed into `try_add_gamepad`.
         if (event->len) {
-            (void)try_add_gamepad(slots, epoll_fd, event->name, true);
+            (void)try_add_gamepad(slots, event->name, true);
         }
 
         // Advance to the next event by skipping the `inotify_event`
@@ -191,20 +189,19 @@ int handle_inotify_event(
 
 int handle_epoll_event(
     struct gamepad_slots* const slots,
-    int epoll,
     int inotify,
     struct epoll_event const* const event
 ) {
     if (event->data.fd == inotify) {
-        return handle_inotify_event(slots, epoll, inotify);
+        return handle_inotify_event(slots, inotify);
     }
 
     for (size_t i = 0; i < slots->count; i++) {
         struct gamepad_slot* const slot = &slots->inner[i];
 
         if (Gamepad_get_hidraw(&slot->gamepad) == event->data.fd) {
-            if (Gamepad_hidraw_event(&slot->gamepad, epoll)) {
-                (void)Gamepad_free(&slot->gamepad, epoll);
+            if (Gamepad_hidraw_event(&slot->gamepad)) {
+                (void)Gamepad_free(&slot->gamepad);
                 if (gamepad_slot_remove(slots, i)) {
                     return RET_ERROR;
                 }
@@ -223,7 +220,7 @@ int handle_epoll_event(
     return RET_ERROR;
 }
 
-int process_initial(struct gamepad_slots* slots, int epoll_fd) {
+int process_initial(struct gamepad_slots* slots) {
     DIR *dir __attribute__((cleanup(cleanup_dir))) = opendir("/dev");
     if (dir == NULL) {
         perror("failed to open /dev directory");
@@ -232,7 +229,7 @@ int process_initial(struct gamepad_slots* slots, int epoll_fd) {
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        (void)try_add_gamepad(slots, epoll_fd, entry->d_name, false);
+        (void)try_add_gamepad(slots, entry->d_name, false);
     }
 
     return RET_OKAY;
@@ -241,6 +238,11 @@ int process_initial(struct gamepad_slots* slots, int epoll_fd) {
 #define MAX_EPOLL_EVENTS 32
 
 int main (int argc, char** argv) {
+    if (Config_init("config.ini")) {
+        fprintf(stderr, "failed to load config.ini\n");
+        return RET_ERROR;
+    }
+
     struct gamepad_slots slots;
     memset(&slots, 0, sizeof(slots));
 
@@ -249,9 +251,7 @@ int main (int argc, char** argv) {
     // excessive CPU usage. However, introducing additional blocking
     // points may cause noticeable delays when processing
     // game controller input.
-    int epoll __attribute__((cleanup(cleanup_fd))) = epoll_create1(0);
-    if (epoll == -1) {
-        perror("failed to create epoll file-descriptor");
+    if (sc_epoll_init()) {
         return RET_ERROR;
     }
 
@@ -273,7 +273,7 @@ int main (int argc, char** argv) {
     }
 
     // Watch `inotify` for events...
-    if (epoll_ctl_add(epoll, inotify, EPOLLIN)) {
+    if (sc_epoll_ctl_add(inotify, EPOLLIN)) {
         return RET_ERROR;
     }
 
@@ -287,7 +287,7 @@ int main (int argc, char** argv) {
     // device yet. In that case, we will fail to listen to the device
     // for this session, though this situation
     // should be extremely rare.
-    if (process_initial(&slots, epoll)) {
+    if (process_initial(&slots)) {
         return RET_ERROR;
     }
 
@@ -307,11 +307,11 @@ int main (int argc, char** argv) {
         // through the events returned by `epoll_wait` and compares each
         // event's file-descriptor against the target descriptors.
         for (size_t i = 0; i < event_count; i++) {
-            (void)handle_epoll_event(&slots, epoll, inotify, &events[i]);
+            (void)handle_epoll_event(&slots, inotify, &events[i]);
         }
 
         for (size_t i = 0; i < slots.count; i++) {
-            (void)Gamepad_update(&slots.inner[i].gamepad, epoll);
+            (void)Gamepad_update(&slots.inner[i].gamepad);
             (void)Gamepad_update_haptics(&slots.inner[i].gamepad);
         }
     }

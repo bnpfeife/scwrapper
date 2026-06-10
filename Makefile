@@ -39,6 +39,7 @@ endif
 INIPARSER_DIR   := vendor/iniparser
 INIPARSER_BUILD := $(INIPARSER_DIR)/build
 INIPARSER_LIB   := $(INIPARSER_BUILD)/libiniparser.a
+CFLAGS          += -isystem $(INIPARSER_DIR)/src
 
 #
 # Sources, Objects, Dependencies, and Static Libraries
@@ -51,7 +52,7 @@ LIBS := $(INIPARSER_LIB)
 #
 # Targets
 #
-bin/scwrapper: $(OBJS) $(LIBS)
+bin/scwrapper: $(LIBS) $(OBJS)
 	@mkdir -p bin
 	$(CC) $(CFLAGS) $(OBJS) $(LIBS) $(LDFLAGS) -o $@
 

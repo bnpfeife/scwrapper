@@ -1,11 +1,11 @@
 #include "constants.h"
 #include "triton.h"
 
+#include <linux/hidraw.h>
 #include <math.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <linux/hidraw.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 
 struct __attribute__((packed)) TritonHapticsRumble {
     uint8_t  type;        // 1 byte

@@ -1,14 +1,12 @@
 #include "constants.h"
 #include "gamepad.h"
-#include "utils.h"
-#include "virtual_gamepad.h"
+#include "sc_epoll.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <sys/epoll.h>
 #include <unistd.h>
 
-int Gamepad_init(struct Gamepad* const gamepad, int epoll, int hidraw) {
+int Gamepad_init(struct Gamepad* const gamepad, int hidraw) {
     // The Steam Controller puck exposes four "hidraw" devices regardless
     // of whether a controller is currently attached. To account for this
     // behavior, initialize the gamepad in "GAMEPAD_STATE_PENDING" and
@@ -19,16 +17,16 @@ int Gamepad_init(struct Gamepad* const gamepad, int epoll, int hidraw) {
         .state  = GAMEPAD_STATE_PENDING,
         .hidraw = hidraw,
     };
-    if (epoll_ctl_add(epoll, hidraw, EPOLLIN | EPOLLRDHUP)) {
-        (void)Gamepad_free(gamepad, epoll);
+    if (sc_epoll_ctl_add(hidraw, EPOLLIN | EPOLLRDHUP)) {
+        (void)Gamepad_free(gamepad);
         return RET_ERROR;
     }
     return RET_OKAY;
 }
 
-int Gamepad_free(struct Gamepad* const gamepad, int epoll) {
+int Gamepad_free(struct Gamepad* const gamepad) {
     int result = RET_OKAY;
-    if (epoll_ctl_remove(epoll, gamepad->hidraw)) {
+    if (sc_epoll_ctl_remove(gamepad->hidraw)) {
         result = RET_ERROR;
     }
     if (close(gamepad->hidraw)) {
@@ -36,7 +34,7 @@ int Gamepad_free(struct Gamepad* const gamepad, int epoll) {
         result = RET_ERROR;
     }
     if (gamepad->state == GAMEPAD_STATE_ACTIVE) {
-        if (GamepadActive_free(&gamepad->u.active, epoll)) {
+        if (GamepadActive_free(&gamepad->u.active)) {
             result = RET_ERROR;
         }
     }
@@ -44,33 +42,33 @@ int Gamepad_free(struct Gamepad* const gamepad, int epoll) {
     return result;
 }
 
-int Gamepad_into_active(struct Gamepad* const gamepad, int epoll) {
+int Gamepad_into_active(struct Gamepad* const gamepad) {
     if (gamepad->state != GAMEPAD_STATE_PENDING) {
         return RET_ERROR;
     }
-    if (GamepadActive_init(&gamepad->u.active, epoll)) {
+    if (GamepadActive_init(&gamepad->u.active)) {
         return RET_ERROR;
     }
     gamepad->state = GAMEPAD_STATE_ACTIVE;
     return RET_OKAY;
 }
 
-int Gamepad_into_pending(struct Gamepad* const gamepad, int epoll) {
+int Gamepad_into_pending(struct Gamepad* const gamepad) {
     if (gamepad->state != GAMEPAD_STATE_ACTIVE) {
         return RET_ERROR;
     }
-    if (GamepadActive_free(&gamepad->u.active, epoll)) {
+    if (GamepadActive_free(&gamepad->u.active)) {
         return RET_ERROR;
     }
     gamepad->state = GAMEPAD_STATE_PENDING;
     return RET_OKAY;
 }
 
-int Gamepad_update(struct Gamepad* gamepad, int epoll) {
+int Gamepad_update(struct Gamepad* gamepad) {
     if (gamepad->state == GAMEPAD_STATE_ACTIVE) {
         int result = GamepadActive_update(&gamepad->u.active, gamepad->hidraw);
         if (result == RET_TIMEOUT) {
-            return Gamepad_into_pending(gamepad, epoll);
+            return Gamepad_into_pending(gamepad);
         }
         if (result) {
             return RET_ERROR;
@@ -97,9 +95,9 @@ int Gamepad_get_uinput(struct Gamepad const* const gamepad) {
     return -1;
 }
 
-int Gamepad_hidraw_event(struct Gamepad* const gamepad, int epoll) {
+int Gamepad_hidraw_event(struct Gamepad* const gamepad) {
     if (gamepad->state == GAMEPAD_STATE_PENDING) {
-        if (Gamepad_into_active(gamepad, epoll)) {
+        if (Gamepad_into_active(gamepad)) {
             return RET_ERROR;
         }
     }
